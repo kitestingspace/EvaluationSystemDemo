@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>極速·創意·澳門 | AI 雙軌評審系統</title>
+  <!-- Tailwind CSS & FontAwesome -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Cloudflare Turnstile -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            gpRed: '#C8102E',
+            gpDarkRed: '#990011',
+            gpGold: '#FFC72C',
+            gpDark: '#121214',
+            gpPanel: '#1E1E24',
+            gpBorder: '#2E2E38'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* 自訂拉桿與選單樣式 */
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 20px;
+      width: 20px;
+      border-radius: 50%;
+      background: #C8102E;
+      cursor: pointer;
+      border: 2px solid #FFC72C;
+    }
+    .checkered-pattern {
+      background-image: linear-gradient(45deg, #18181b 25%, transparent 25%), 
+                        linear-gradient(-45deg, #18181b 25%, transparent 25%), 
+                        linear-gradient(45deg, transparent 75%, #18181b 75%), 
+                        linear-gradient(-45deg, transparent 75%, #18181b 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    }
+    /* 燈箱縮放過渡 */
+    #lightbox-img {
+      transition: transform 0.2s ease-out;
+      transform-origin: center center;
+    }
+  </style>
+</head>
+<body class="bg-gpDark text-gray-100 font-sans min-h-screen flex flex-col">
+
+  <!-- ======================== CONFIG 設定區 ======================== -->
+  <script>
+    // 請填入您佈署的 Google Apps Script 網頁應用程式 URL
+    const GAS_API_URL = "YOUR_GAS_WEB_APP_URL_HERE";
+    // 請填入 Cloudflare Turnstile Site Key（若測試階段免驗證可留空）
+    const TURNSTILE_SITE_KEY = "YOUR_TURNSTILE_SITE_KEY_HERE";
+  </script>
+
+  <!-- 頂部導航列 (大賽車風格) -->
+  <header class="bg-black border-b-2 border-gpRed shadow-xl sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="bg-gpRed text-white font-black px-2.5 py-1 rounded tracking-tighter text-sm italic">MGP·AI</div>
+        <h1 class="text-lg md:text-xl font-bold tracking-wide">
+          極速·創意·澳門 <span class="text-xs text-gpGold font-normal ml-1">AI 雙軌評審平台</span>
+        </h1>
+      </div>
+      <div id="user-info-bar" class="hidden items-center space-x-3 text-sm">
+        <span class="bg-gray-800 text-gray-300 px-3 py-1 rounded-full border border-gray-700">
+          <i class="fa-solid fa-user-check text-gpGold mr-1.5"></i>評審人：<strong id="display-judge-name" class="text-white"></strong>
+        </span>
+        <button onclick="logout()" class="text-gray-400 hover:text-gpRed transition"><i class="fa-solid fa-right-from-bracket"></i></button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主內容容器 -->
+  <main class="flex-1 max-w-7xl mx-auto w-full p-4 md:p-6 flex flex-col justify-center">
+
+    <!-- ==================== 1. 登入介面 ==================== -->
+    <div id="login-view" class="max-w-md mx-auto w-full bg-gpPanel border border-gpBorder rounded-xl shadow-2xl p-6 md:p-8 relative overflow-hidden">
+      <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-gpRed via-gpGold to-gpRed"></div>
+      
+      <div class="text-center mb-6">
+        <i class="fa-solid fa-flag-checkered text-3xl text-gpGold mb-2"></i>
+        <h2 class="text-xl font-bold">評審委員身分登入</h2>
+        <p class="text-xs text-gray-400 mt-1">澳門格蘭披治大賽車 AI 創作評審控制台</p>
+      </div>
+
+      <form id="login-form" onsubmit="handleLoginSubmit(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs text-gray-300 mb-1">評審帳號</label>
+          <input type="text" id="login-username" required class="w-full bg-black/50 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-gpRed text-sm" placeholder="輸入指定評審帳號">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-300 mb-1">認證密碼</label>
+          <input type="password" id="login-password" required class="w-full bg-black/50 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-gpRed text-sm" placeholder="••••••••">
+        </div>
+
+        <!-- Cloudflare Turnstile 容器 -->
+        <div class="flex justify-center my-2" id="turnstile-container"></div>
+
+        <button type="submit" id="login-btn" class="w-full bg-gpRed hover:bg-gpDarkRed text-white font-bold py-2.5 rounded transition duration-200 text-sm shadow-lg flex items-center justify-center">
+          <span>進入評審系統</span>
+        </button>
+        <p id="login-msg" class="text-xs text-center text-red-400 hidden"></p>
+      </form>
+    </div>
+
+    <!-- ==================== 2. 評審主工作區 ==================== -->
+    <div id="eval-view" class="hidden flex-col space-y-4">
+      
+      <!-- 控制列：進度與分頁切換 -->
+      <div class="bg-gpPanel border border-gpBorder rounded-lg p-3 flex flex-wrap items-center justify-between gap-3 shadow">
+        <div class="flex items-center space-x-3">
+          <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">當前進度</span>
+          <span id="progress-indicator" class="text-sm font-bold bg-black/60 px-3 py-1 rounded text-gpGold border border-gray-800">
+            0 / 0
+          </span>
+          <span id="current-category-badge" class="text-xs px-2.5 py-0.5 rounded bg-blue-900/60 text-blue-200 border border-blue-700"></span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button onclick="navigateItem(-1)" id="prev-btn" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded text-xs transition"><i class="fa-solid fa-chevron-left mr-1"></i>上一個</button>
+          <button onclick="navigateItem(1)" id="next-btn" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded text-xs transition">下一個<i class="fa-solid fa-chevron-right ml-1"></i></button>
+        </div>
+      </div>
+
+      <!-- 核心雙欄排版 (左：作品展示與資料 / 右：評審打分面板) -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        <!-- 左側：多媒體與作品申報資料 (佔 7 格) -->
+        <div class="lg:col-span-7 space-y-4">
+          <!-- 媒體預覽視窗 -->
+          <div class="bg-black rounded-xl border border-gpBorder overflow-hidden shadow-xl relative min-h-[300px] flex items-center justify-center checkered-pattern">
+            <div id="media-container" class="w-full h-full flex items-center justify-center">
+              <!-- 動態注入 img 或 iframe -->
+            </div>
+            <!-- 放大鏡浮水印按鈕 (僅限圖片) -->
+            <button id="zoom-btn" onclick="openLightbox()" class="hidden absolute bottom-3 right-3 bg-black/80 hover:bg-gpRed text-white text-xs px-3 py-1.5 rounded-full backdrop-blur border border-white/20 transition shadow">
+              <i class="fa-solid fa-magnifying-glass-plus mr-1"></i>查看原圖
+            </button>
+          </div>
+
+          <!-- 作品申報詳情 (可折疊/展開) -->
+          <div class="bg-gpPanel border border-gpBorder rounded-xl p-5 shadow space-y-4">
+            <div class="border-b border-gray-800 pb-3">
+              <span id="item-serial" class="text-xs font-mono text-gray-500"></span>
+              <h2 id="item-title" class="text-xl font-bold text-white mt-0.5"></h2>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div class="bg-black/30 p-3 rounded border border-gray-800/80">
+                <span class="text-gpGold font-semibold block mb-1">【創作背景】</span>
+                <p id="item-bg" class="text-gray-300 leading-relaxed whitespace-pre-line"></p>
+              </div>
+              <div class="bg-black/30 p-3 rounded border border-gray-800/80">
+                <span class="text-gpGold font-semibold block mb-1">【主題的表達】</span>
+                <p id="item-theme" class="text-gray-300 leading-relaxed whitespace-pre-line"></p>
+              </div>
+            </div>
+
+            <div class="space-y-2 text-xs">
+              <div class="bg-black/30 p-3 rounded border border-gray-800/80">
+                <span class="text-red-400 font-semibold block mb-1">【AI 工具與提示詞說明】</span>
+                <div class="text-gray-400 mb-1">申報工具：<span id="item-tools" class="text-gray-200"></span></div>
+                <p id="item-prompt" class="text-gray-300 font-mono bg-black/40 p-2 rounded break-all"></p>
+              </div>
+              <div class="bg-black/30 p-3 rounded border border-gray-800/80">
+                <span class="text-gray-400 font-semibold block mb-1">【後製與外部素材授權】</span>
+                <div class="text-gray-300">後製說明：<span id="item-postprocess"></span></div>
+                <div class="text-gray-300 mt-1">外部素材：<span id="item-materials"></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右側：評分與評語面板 (佔 5 格) -->
+        <div class="lg:col-span-5 space-y-4">
+          
+          <!-- AI 輔助評審卡片 -->
+          <div class="bg-gradient-to-br from-gray-900 to-gpPanel border border-gray-700/80 rounded-xl p-4 shadow">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-gpGold flex items-center">
+                <i class="fa-solid fa-robot mr-1.5"></i>AI 智慧初審參考 (OpenRouter)
+              </span>
+              <button onclick="triggerAICheck()" id="ai-btn" class="text-[11px] bg-gray-800 hover:bg-gray-700 text-gray-200 px-2.5 py-1 rounded border border-gray-600 transition">
+                <i class="fa-solid fa-bolt mr-1"></i>執行 AI 審閱
+              </button>
+            </div>
+            <div id="ai-result-box" class="text-xs text-gray-400 italic bg-black/40 p-3 rounded border border-gray-800/60">
+              尚無 AI 評估資料，可點擊上方按鈕取得初審建議。
+            </div>
+          </div>
+
+          <!-- 真人評審評分表單 -->
+          <div class="bg-gpPanel border border-gpBorder rounded-xl p-5 shadow space-y-5">
+            <div class="flex items-center justify-between border-b border-gray-800 pb-3">
+              <h3 class="text-sm font-bold uppercase tracking-wider text-white">評審規準評分</h3>
+              <div class="text-right">
+                <span class="text-xs text-gray-400">加權總分</span>
+                <div id="calc-total" class="text-2xl font-black text-gpGold">0.0</div>
+              </div>
+            </div>
+
+            <!-- 5 個維度滑桿 -->
+            <div class="space-y-4 text-xs">
+              <!-- 1. 賽車主題契合度 -->
+              <div>
+                <div class="flex justify-between mb-1">
+                  <span class="text-gray-200">1. 賽車主題契合度 (10%)</span>
+                  <span id="val-dim1" class="font-bold text-gpGold">5 / 10</span>
+                </div>
+                <input type="range" min="0" max="10" step="1" value="5" id="dim1" oninput="updateScoreCalc()" class="w-full bg-gray-800 h-1.5 rounded-lg">
+              </div>
+
+              <!-- 2. 概念構思與原創性 -->
+              <div>
+                <div class="flex justify-between mb-1">
+                  <span class="text-gray-200">2. 概念構思與原創性 (30%)</span>
+                  <span id="val-dim2" class="font-bold text-gpGold">5 / 10</span>
+                </div>
+                <input type="range" min="0" max="10" step="1" value="5" id="dim2" oninput="updateScoreCalc()" class="w-full bg-gray-800 h-1.5 rounded-lg">
+              </div>
+
+              <!-- 3. AI 提示工程技巧 -->
+              <div>
+                <div class="flex justify-between mb-1">
+                  <span class="text-gray-200">3. AI 提示工程技巧 (15%)</span>
+                  <span id="val-dim3" class="font-bold text-gpGold">5 / 10</span>
+                </div>
+                <input type="range" min="0" max="10" step="1" value="5" id="dim3" oninput="updateScoreCalc()" class="w-full bg-gray-800 h-1.5 rounded-lg">
+              </div>
+
+              <!-- 4. 創作工藝與合規性 -->
+              <div>
+                <div class="flex justify-between mb-1">
+                  <span class="text-gray-200">4. 創作工藝與合規性 (15%)</span>
+                  <span id="val-dim4" class="font-bold text-gpGold">5 / 10</span>
+                </div>
+                <input type="range" min="0" max="10" step="1" value="5" id="dim4" oninput="updateScoreCalc()" class="w-full bg-gray-800 h-1.5 rounded-lg">
+              </div>
+
+              <!-- 5. 整體視覺呈現 -->
+              <div>
+                <div class="flex justify-between mb-1">
+                  <span class="text-gray-200">5. 整體視覺／視聽呈現 (30%)</span>
+                  <span id="val-dim5" class="font-bold text-gpGold">5 / 10</span>
+                </div>
+                <input type="range" min="0" max="10" step="1" value="5" id="dim5" oninput="updateScoreCalc()" class="w-full bg-gray-800 h-1.5 rounded-lg">
+              </div>
+            </div>
+
+            <!-- 模板化評語快選標籤 -->
+            <div class="space-y-2 pt-2 border-t border-gray-800">
+              <label class="block text-xs font-semibold text-gray-300">快速插入範本評語 (點選即帶入)：</label>
+              <div class="flex flex-wrap gap-1.5 text-[11px]">
+                <button type="button" onclick="insertTemplate('賽車動態與澳門東望洋賽道氛圍融合極佳，速度感強烈。')" class="bg-gray-800 hover:bg-gpRed/80 px-2 py-1 rounded text-gray-300 transition">+ 賽道融合佳</button>
+                <button type="button" onclick="insertTemplate('視角構思突破常規，世界觀富有未來感與想像力。')" class="bg-gray-800 hover:bg-gpRed/80 px-2 py-1 rounded text-gray-300 transition">+ 構思具未來感</button>
+                <button type="button" onclick="insertTemplate('Prompt 結構清晰，光影細節層次豐富，AI 掌控力成熟。')" class="bg-gray-800 hover:bg-gpRed/80 px-2 py-1 rounded text-gray-300 transition">+ 提示詞成熟</button>
+                <button type="button" onclick="insertTemplate('人機協同後製完整，無明顯畸變瑕疵，合規性良好。')" class="bg-gray-800 hover:bg-gpRed/80 px-2 py-1 rounded text-gray-300 transition">+ 工藝合規</button>
+                <button type="button" onclick="insertTemplate('澳門元素稍顯微弱，建議加強賽車本體動態特徵。')" class="bg-gray-800 hover:bg-amber-700/80 px-2 py-1 rounded text-gray-300 transition">+ 建議加強元素</button>
+                <button type="button" onclick="insertTemplate('畫面噪點與瑕疵較明顯，Prompt 調控有待優化。')" class="bg-gray-800 hover:bg-amber-700/80 px-2 py-1 rounded text-gray-300 transition">+ 提示詞待調整</button>
+              </div>
+              <textarea id="judge-comment" rows="3" class="w-full bg-black/50 border border-gray-700 rounded p-2 text-xs text-white focus:outline-none focus:border-gpRed" placeholder="輸入評審評語，或點選上方快選標籤..."></textarea>
+            </div>
+
+            <!-- 儲存按鈕 -->
+            <button onclick="saveAndNext()" id="save-btn" class="w-full bg-gpRed hover:bg-gpDarkRed text-white font-bold py-2.5 rounded text-xs transition duration-200 flex items-center justify-center shadow-lg">
+              <i class="fa-solid fa-cloud-arrow-up mr-1.5"></i>儲存評分並進入下一個
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ==================== 3. 原圖縮放檢視燈箱 (Lightbox) ==================== -->
+  <div id="lightbox" class="fixed inset-0 bg-black/95 z-50 hidden flex-col items-center justify-center backdrop-blur-sm select-none">
+    <!-- 燈箱頂部工具列 -->
+    <div class="absolute top-4 right-4 flex items-center space-x-3 z-50">
+      <button onclick="zoomLightbox(0.2)" class="bg-gray-800 hover:bg-gray-700 text-white w-9 h-9 rounded-full flex items-center justify-center transition"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+      <button onclick="zoomLightbox(-0.2)" class="bg-gray-800 hover:bg-gray-700 text-white w-9 h-9 rounded-full flex items-center justify-center transition"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+      <button onclick="resetLightboxZoom()" class="bg-gray-800 hover:bg-gray-700 text-white px-3 h-9 rounded-full text-xs transition">1:1</button>
+      <button onclick="closeLightbox()" class="bg-gpRed hover:bg-gpDarkRed text-white w-9 h-9 rounded-full flex items-center justify-center transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+    </div>
+    <!-- 縮放圖片容器 -->
+    <div class="w-full h-full flex items-center justify-center overflow-hidden p-4 cursor-grab" id="lightbox-container" onwheel="handleLightboxWheel(event)">
+      <img id="lightbox-img" src="" alt="原圖放大預覽" class="max-w-[90vw] max-h-[90vh] object-contain shadow-2xl rounded">
+    </div>
+  </div>
+
+  <!-- ==================== 前端應用邏輯 JS ==================== -->
+  <script>
+    let appState = {
+      token: sessionStorage.getItem("mgp_token") || "",
+      judgeName: sessionStorage.getItem("mgp_judge") || "",
+      submissions: [],
+      currentIndex: 0,
+      turnstileToken: ""
+    };
+
+    let currentZoom = 1.0;
+
+    // 初始化載入
+    window.addEventListener("DOMContentLoaded", () => {
+      // 渲染 Turnstile Widget
+      if (TURNSTILE_SITE_KEY && typeof turnstile !== "undefined") {
+        turnstile.render('#turnstile-container', {
+          sitekey: TURNSTILE_SITE_KEY,
+          callback: function(token) { appState.turnstileToken = token; }
+        });
+      }
+
+      // 若已有 Token 則直接載入資料
+      if (appState.token && appState.judgeName) {
+        showEvalView();
+        loadSubmissions();
+      }
+    });
+
+    // 呼叫 GAS 後端（採用 text/plain 避免跨域預檢）
+    async function callApi(payload) {
+      try {
+        const res = await fetch(GAS_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(payload)
+        });
+        return await res.json();
+      } catch (e) {
+        return { success: false, message: "網路通訊異常：" + e.message };
+      }
+    }
+
+    // 處理登入
+    async function handleLoginSubmit(e) {
+      e.preventDefault();
+      const u = document.getElementById("login-username").value.trim();
+      const p = document.getElementById("login-password").value.trim();
+      const msg = document.getElementById("login-msg");
+      const btn = document.getElementById("login-btn");
+
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin mr-1"></i>驗證中...`;
+      msg.classList.add("hidden");
+
+      const res = await callApi({
+        action: "login",
+        username: u,
+        password: p,
+        turnstileToken: appState.turnstileToken
+      });
+
+      btn.disabled = false;
+      btn.innerHTML = `進入評審系統`;
+
+      if (res.success) {
+        appState.token = res.token;
+        appState.judgeName = res.judgeName;
+        sessionStorage.setItem("mgp_token", res.token);
+        sessionStorage.setItem("mgp_judge", res.judgeName);
+        showEvalView();
+        loadSubmissions();
+      } else {
+        msg.textContent = res.message || "登入失敗";
+        msg.classList.remove("hidden");
+      }
+    }
+
+    function showEvalView() {
+      document.getElementById("login-view").classList.add("hidden");
+      document.getElementById("eval-view").classList.remove("hidden");
+      document.getElementById("user-info-bar").classList.remove("hidden");
+      document.getElementById("display-judge-name").textContent = appState.judgeName;
+    }
+
+    function logout() {
+      sessionStorage.clear();
+      location.reload();
+    }
+
+    // 載入評審清單
+    async function loadSubmissions() {
+      const res = await callApi({ action: "getSubmissions", token: appState.token });
+      if (!res.success) {
+        alert(res.message);
+        logout();
+        return;
+      }
+      appState.submissions = res.list || [];
+      if (appState.submissions.length === 0) {
+        alert("目前尚無作品資料！");
+        return;
+      }
+      renderCurrentItem();
+    }
+
+    // 提取 Google Drive 檔案 ID
+    function extractDriveId(url) {
+      if (!url) return null;
+      const match = url.match(/[-\w]{25,}/);
+      return match ? match[0] : null;
+    }
+
+    // 渲染當前作品
+    function renderCurrentItem() {
+      const totalCount = appState.submissions.length;
+      if (totalCount === 0) return;
+      const cur = appState.submissions[appState.currentIndex];
+
+      // 更新進度與標籤
+      document.getElementById("progress-indicator").textContent = `${appState.currentIndex + 1} / ${totalCount}`;
+      document.getElementById("current-category-badge").textContent = cur.category || "未分類";
+      document.getElementById("prev-btn").disabled = (appState.currentIndex === 0);
+      document.getElementById("next-btn").disabled = (appState.currentIndex === totalCount - 1);
+
+      // 文本細節注入
+      document.getElementById("item-serial").textContent = `流水號：${cur.id}`;
+      document.getElementById("item-title").textContent = cur.title || "無標題";
+      document.getElementById("item-bg").textContent = cur.bg || "（未填寫）";
+      document.getElementById("item-theme").textContent = cur.themeDesc || "（未填寫）";
+      document.getElementById("item-tools").textContent = cur.tools || "（未申報）";
+      document.getElementById("item-prompt").textContent = cur.prompt || "（未提供）";
+      document.getElementById("item-postprocess").textContent = cur.postProcess || "無";
+      document.getElementById("item-materials").textContent = cur.materialAuth || "無";
+
+      // 媒體渲染 (圖片或影片)
+      const mediaBox = document.getElementById("media-container");
+      const zoomBtn = document.getElementById("zoom-btn");
+      mediaBox.innerHTML = "";
+      zoomBtn.classList.add("hidden");
+
+      const fileId = extractDriveId(cur.fileUrl);
+      const isVideo = cur.category && cur.category.includes("影片");
+
+      if (fileId) {
+        if (isVideo) {
+          mediaBox.innerHTML = `<iframe src="https://drive.google.com/file/d/${fileId}/preview" class="w-full h-[360px] md:h-[480px] rounded border-0" allow="autoplay"></iframe>`;
+        } else {
+          const directImgUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
+          mediaBox.innerHTML = `<img id="preview-image" src="${directImgUrl}" class="max-h-[480px] w-auto max-w-full object-contain cursor-pointer rounded" onclick="openLightbox()" alt="作品預覽">`;
+          zoomBtn.classList.remove("hidden");
+        }
+      } else {
+        mediaBox.innerHTML = `<div class="text-gray-500 text-xs">作品連結無效或未提供 Google Drive 網址</div>`;
+      }
+
+      // 回填既有評分
+      const s = cur.myScores || {};
+      document.getElementById("dim1").value = s.dim1 !== "" ? s.dim1 : 5;
+      document.getElementById("dim2").value = s.dim2 !== "" ? s.dim2 : 5;
+      document.getElementById("dim3").value = s.dim3 !== "" ? s.dim3 : 5;
+      document.getElementById("dim4").value = s.dim4 !== "" ? s.dim4 : 5;
+      document.getElementById("dim5").value = s.dim5 !== "" ? s.dim5 : 5;
+      document.getElementById("judge-comment").value = s.comment || "";
+      updateScoreCalc();
+
+      // 回填 AI 評審展示
+      renderAiBox(cur.aiResult);
+    }
+
+    // 即時計算加權分
+    function updateScoreCalc() {
+      const d1 = Number(document.getElementById("dim1").value);
+      const d2 = Number(document.getElementById("dim2").value);
+      const d3 = Number(document.getElementById("dim3").value);
+      const d4 = Number(document.getElementById("dim4").value);
+      const d5 = Number(document.getElementById("dim5").value);
+
+      document.getElementById("val-dim1").textContent = `${d1} / 10`;
+      document.getElementById("val-dim2").textContent = `${d2} / 10`;
+      document.getElementById("val-dim3").textContent = `${d3} / 10`;
+      document.getElementById("val-dim4").textContent = `${d4} / 10`;
+      document.getElementById("val-dim5").textContent = `${d5} / 10`;
+
+      const weighted = (d1 * 1.0) + (d2 * 3.0) + (d3 * 1.5) + (d4 * 1.5) + (d5 * 3.0);
+      document.getElementById("calc-total").textContent = weighted.toFixed(1);
+    }
+
+    // 渲染 AI 評審卡片
+    function renderAiBox(ai) {
+      const box = document.getElementById("ai-result-box");
+      if (ai && ai.total !== "" && ai.total !== undefined) {
+        box.innerHTML = `
+          <div class="flex justify-between items-center text-gray-200 font-semibold mb-1">
+            <span>加權建議總分：<span class="text-gpGold">${ai.total}</span> 分</span>
+            <span class="text-[10px] text-gray-400">各維度：${ai.dim1}, ${ai.dim2}, ${ai.dim3}, ${ai.dim4}, ${ai.dim5}</span>
+          </div>
+          <p class="text-gray-300 not-italic">「${ai.comment}」</p>
+        `;
+      } else {
+        box.innerHTML = `尚無 AI 評估資料，可點擊上方按鈕取得初審建議。`;
+      }
+    }
+
+    // 執行 AI 審閱
+    async function triggerAICheck() {
+      const cur = appState.submissions[appState.currentIndex];
+      const btn = document.getElementById("ai-btn");
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>分析中...`;
+
+      const res = await callApi({
+        action: "triggerAIEval",
+        token: appState.token,
+        id: cur.id
+      });
+
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-bolt mr-1"></i>執行 AI 審閱`;
+
+      if (res.success) {
+        cur.aiResult = res.data;
+        renderAiBox(res.data);
+      } else {
+        alert("AI 評審失敗：" + res.message);
+      }
+    }
+
+    // 模板評語插入
+    function insertTemplate(text) {
+      const txt = document.getElementById("judge-comment");
+      txt.value = txt.value ? `${txt.value} ${text}` : text;
+    }
+
+    // 儲存並進入下一件
+    async function saveAndNext() {
+      const cur = appState.submissions[appState.currentIndex];
+      const saveBtn = document.getElementById("save-btn");
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin mr-1"></i>儲存中...`;
+
+      const scores = {
+        dim1: document.getElementById("dim1").value,
+        dim2: document.getElementById("dim2").value,
+        dim3: document.getElementById("dim3").value,
+        dim4: document.getElementById("dim4").value,
+        dim5: document.getElementById("dim5").value
+      };
+      const comment = document.getElementById("judge-comment").value.trim();
+
+      const res = await callApi({
+        action: "submitJudgeScore",
+        token: appState.token,
+        id: cur.id,
+        scores: scores,
+        comment: comment
+      });
+
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = `<i class="fa-solid fa-cloud-arrow-up mr-1.5"></i>儲存評分並進入下一個`;
+
+      if (res.success) {
+        // 更新本地緩存
+        cur.myScores = { ...scores, total: res.total, comment: comment };
+        if (appState.currentIndex < appState.submissions.length - 1) {
+          appState.currentIndex++;
+          renderCurrentItem();
+        } else {
+          alert("🎉 恭喜！您已完成所有送件作品的評審！");
+        }
+      } else {
+        alert("儲存失敗：" + res.message);
+      }
+    }
+
+    function navigateItem(offset) {
+      const nextIdx = appState.currentIndex + offset;
+      if (nextIdx >= 0 && nextIdx < appState.submissions.length) {
+        appState.currentIndex = nextIdx;
+        renderCurrentItem();
+      }
+    }
+
+    // ==================== 燈箱圖片縮放功能 ====================
+    function openLightbox() {
+      const previewImg = document.getElementById("preview-image");
+      if (!previewImg) return;
+      const lb = document.getElementById("lightbox");
+      const lbImg = document.getElementById("lightbox-img");
+      lbImg.src = previewImg.src;
+      currentZoom = 1.0;
+      lbImg.style.transform = `scale(1.0)`;
+      lb.classList.remove("hidden");
+      lb.classList.add("flex");
+    }
+
+    function closeLightbox() {
+      const lb = document.getElementById("lightbox");
+      lb.classList.add("hidden");
+      lb.classList.remove("flex");
+    }
+
+    function zoomLightbox(delta) {
+      currentZoom = Math.max(0.5, Math.min(3.5, currentZoom + delta));
+      document.getElementById("lightbox-img").style.transform = `scale(${currentZoom})`;
+    }
+
+    function resetLightboxZoom() {
+      currentZoom = 1.0;
+      document.getElementById("lightbox-img").style.transform = `scale(1.0)`;
+    }
+
+    function handleLightboxWheel(e) {
+      e.preventDefault();
+      zoomLightbox(e.deltaY < 0 ? 0.15 : -0.15);
+    }
+  </script>
+</body>
+</html>
