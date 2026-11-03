@@ -48,7 +48,7 @@
     }
   </style>
 
-  <!-- Cloudflare Turnstile (採用顯式回呼機制，確保 100% 穩定載入) -->
+  <!-- Cloudflare Turnstile 顯式回呼機制 -->
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoaded&render=explicit" async defer></script>
 </head>
 <body class="bg-gpDark text-gray-100 font-sans min-h-screen flex flex-col">
@@ -61,18 +61,19 @@
     const TURNSTILE_SITE_KEY = "0x4AAAAAAFd0bzoz4otQpb0s";
   </script>
 
-  <!-- 頂部導航列 (大賽車風格) -->
+  <!-- 頂部導航列 -->
   <header class="bg-black border-b-2 border-gpRed shadow-xl sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center space-x-3">
         <div class="bg-gpRed text-white font-black px-2.5 py-1 rounded tracking-tighter text-sm italic">MGP</div>
         <h1 class="text-lg md:text-xl font-bold tracking-wide">
-          極速·創意·澳門 <span class="text-xs text-gpGold font-normal ml-1">評審專用評分平台</span>
+          極速·創意·澳門 <span class="text-xs text-gpGold font-normal ml-1">評審專用平台</span>
         </h1>
       </div>
       <div id="user-info-bar" class="hidden items-center space-x-3 text-sm">
         <span class="bg-gray-800 text-gray-300 px-3 py-1 rounded-full border border-gray-700">
-          <i class="fa-solid fa-user-check text-gpGold mr-1.5"></i>評審委員：<strong id="display-judge-name" class="text-white"></strong>
+          <i class="fa-solid fa-user-check text-gpGold mr-1.5"></i>評審：<strong id="display-judge-name" class="text-white"></strong>
+          <span id="display-judge-group" class="ml-2 bg-gpRed/80 text-white font-bold px-2 py-0.5 rounded text-xs"></span>
         </span>
         <button onclick="logout()" class="text-gray-400 hover:text-gpRed transition" title="登出系統"><i class="fa-solid fa-right-from-bracket"></i></button>
       </div>
@@ -102,7 +103,7 @@
           <input type="password" id="login-password" required class="w-full bg-black/50 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-gpRed text-sm" placeholder="••••••••">
         </div>
 
-        <!-- Cloudflare Turnstile 專用容器 -->
+        <!-- Cloudflare Turnstile 容器 -->
         <div class="flex justify-center min-h-[65px] items-center my-2" id="turnstile-wrapper">
           <div id="turnstile-container"></div>
         </div>
@@ -117,10 +118,10 @@
     <!-- ==================== 2. 評審主工作區 ==================== -->
     <div id="eval-view" class="hidden flex-col space-y-4">
       
-      <!-- 控制列：進度與上下筆切換 (完全無流水號，僅顯示第幾件) -->
+      <!-- 控制列：分組進度指示 -->
       <div class="bg-gpPanel border border-gpBorder rounded-lg p-3 flex flex-wrap items-center justify-between gap-3 shadow">
         <div class="flex items-center space-x-3">
-          <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">當前評審進度</span>
+          <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">目前評審進度</span>
           <span id="progress-indicator" class="text-sm font-bold bg-black/60 px-3 py-1 rounded text-gpGold border border-gray-800">
             第 0 / 0 件作品
           </span>
@@ -136,23 +137,25 @@
         </div>
       </div>
 
-      <!-- 核心雙欄排版 (左：作品展示與申報資料 / 右：評分規準面板) -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <!-- 空白狀態提示 (無所屬組別作品時) -->
+      <div id="empty-state" class="hidden bg-gpPanel border border-gpBorder rounded-xl p-12 text-center">
+        <i class="fa-solid fa-inbox text-5xl text-gray-600 mb-4"></i>
+        <h3 class="text-lg font-bold text-gray-300">本組別暫無待審作品</h3>
+        <p class="text-xs text-gray-500 mt-2">您的評審帳號所屬分組中目前沒有指派的作品記錄。</p>
+      </div>
+
+      <!-- 核心雙欄排版 (左：作品展示 / 右：評分規準) -->
+      <div id="content-grid" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
-        <!-- 左側：多媒體與創作申報資料 (佔 7 格) -->
+        <!-- 左側：多媒體與創作申報 (佔 7 格) -->
         <div class="lg:col-span-7 space-y-4">
-          <!-- 媒體預覽視窗 -->
           <div class="bg-black rounded-xl border border-gpBorder overflow-hidden shadow-xl relative min-h-[320px] flex items-center justify-center checkered-pattern">
-            <div id="media-container" class="w-full h-full flex items-center justify-center">
-              <!-- 動態注入 img 或 iframe -->
-            </div>
-            <!-- 放大鏡浮水印按鈕 (僅限圖片) -->
+            <div id="media-container" class="w-full h-full flex items-center justify-center"></div>
             <button id="zoom-btn" onclick="openLightbox()" class="hidden absolute bottom-3 right-3 bg-black/80 hover:bg-gpRed text-white text-xs px-3 py-1.5 rounded-full backdrop-blur border border-white/20 transition shadow">
               <i class="fa-solid fa-magnifying-glass-plus mr-1"></i>檢視原圖
             </button>
           </div>
 
-          <!-- 作品申報詳情 (已移除任何流水號與身分欄位) -->
           <div class="bg-gpPanel border border-gpBorder rounded-xl p-5 shadow space-y-4">
             <div class="border-b border-gray-800 pb-2">
               <h2 id="item-title" class="text-xl font-bold text-white tracking-wide"></h2>
@@ -184,7 +187,7 @@
           </div>
         </div>
 
-        <!-- 右側：獨立客觀評分面板 (佔 5 格，已徹底移除 AI 評審卡片) -->
+        <!-- 右側：獨立客觀評分面板 (佔 5 格) -->
         <div class="lg:col-span-5 space-y-4">
           <div class="bg-gpPanel border border-gpBorder rounded-xl p-5 shadow space-y-5">
             <div class="flex items-center justify-between border-b border-gray-800 pb-3">
@@ -195,9 +198,8 @@
               </div>
             </div>
 
-            <!-- 5 個維度滑桿 (0-10 分) -->
+            <!-- 5 個維度滑桿 -->
             <div class="space-y-4 text-xs">
-              <!-- 1. 賽車主題契合度 -->
               <div>
                 <div class="flex justify-between mb-1">
                   <span class="text-gray-200">1. 賽車主題契合度 (10%)</span>
@@ -206,7 +208,6 @@
                 <input type="range" min="0" max="10" step="1" value="5" id="dim1" oninput="updateScoreCalc()" class="w-full bg-gray-800 h-1.5 rounded-lg">
               </div>
 
-              <!-- 2. 概念構思與原創性 -->
               <div>
                 <div class="flex justify-between mb-1">
                   <span class="text-gray-200">2. 概念構思與原創性 (30%)</span>
@@ -215,7 +216,6 @@
                 <input type="range" min="0" max="10" step="1" value="5" id="dim2" oninput="updateScoreCalc()" class="w-full bg-gray-800 h-1.5 rounded-lg">
               </div>
 
-              <!-- 3. AI 提示工程技巧 -->
               <div>
                 <div class="flex justify-between mb-1">
                   <span class="text-gray-200">3. AI 提示工程技巧 (15%)</span>
@@ -224,7 +224,6 @@
                 <input type="range" min="0" max="10" step="1" value="5" id="dim3" oninput="updateScoreCalc()" class="w-full bg-gray-800 h-1.5 rounded-lg">
               </div>
 
-              <!-- 4. 創作工藝與合規性 -->
               <div>
                 <div class="flex justify-between mb-1">
                   <span class="text-gray-200">4. 創作工藝與合規性 (15%)</span>
@@ -233,7 +232,6 @@
                 <input type="range" min="0" max="10" step="1" value="5" id="dim4" oninput="updateScoreCalc()" class="w-full bg-gray-800 h-1.5 rounded-lg">
               </div>
 
-              <!-- 5. 整體視覺呈現 -->
               <div>
                 <div class="flex justify-between mb-1">
                   <span class="text-gray-200">5. 整體視覺／視聽呈現 (30%)</span>
@@ -245,7 +243,7 @@
 
             <!-- 模板化評語快選標籤 -->
             <div class="space-y-2 pt-2 border-t border-gray-800">
-              <label class="block text-xs font-semibold text-gray-300">快速插入範本評語 (點選即帶入)：</label>
+              <label class="block text-xs font-semibold text-gray-300">快速插入範本評語：</label>
               <div class="flex flex-wrap gap-1.5 text-[11px]">
                 <button type="button" onclick="insertTemplate('賽車動態與澳門東望洋賽道氛圍融合極佳，速度感強烈。')" class="bg-gray-800 hover:bg-gpRed/80 px-2 py-1 rounded text-gray-300 transition">+ 賽道融合佳</button>
                 <button type="button" onclick="insertTemplate('視角構思突破常規，世界觀富有未來感與想像力。')" class="bg-gray-800 hover:bg-gpRed/80 px-2 py-1 rounded text-gray-300 transition">+ 構思具未來感</button>
@@ -257,7 +255,7 @@
               <textarea id="judge-comment" rows="3" class="w-full bg-black/50 border border-gray-700 rounded p-2 text-xs text-white focus:outline-none focus:border-gpRed" placeholder="輸入評審評語，或點選上方快選標籤..."></textarea>
             </div>
 
-            <!-- 儲存與下一步按鈕 -->
+            <!-- 儲存按鈕 -->
             <button onclick="saveAndNext()" id="save-btn" class="w-full bg-gpRed hover:bg-gpDarkRed text-white font-bold py-2.5 rounded text-xs transition duration-200 flex items-center justify-center shadow-lg">
               <i class="fa-solid fa-cloud-arrow-up mr-1.5"></i>儲存評分並進入下一件
             </button>
@@ -267,13 +265,13 @@
     </div>
   </main>
 
-  <!-- ==================== 3. 原圖縮放檢視燈箱 (Lightbox) ==================== -->
+  <!-- ==================== 3. 原圖縮放檢視燈箱 ==================== -->
   <div id="lightbox" class="fixed inset-0 bg-black/95 z-50 hidden flex-col items-center justify-center backdrop-blur-sm select-none">
     <div class="absolute top-4 right-4 flex items-center space-x-3 z-50">
-      <button onclick="zoomLightbox(0.2)" class="bg-gray-800 hover:bg-gray-700 text-white w-9 h-9 rounded-full flex items-center justify-center transition" title="放大"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
-      <button onclick="zoomLightbox(-0.2)" class="bg-gray-800 hover:bg-gray-700 text-white w-9 h-9 rounded-full flex items-center justify-center transition" title="縮小"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+      <button onclick="zoomLightbox(0.2)" class="bg-gray-800 hover:bg-gray-700 text-white w-9 h-9 rounded-full flex items-center justify-center transition"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+      <button onclick="zoomLightbox(-0.2)" class="bg-gray-800 hover:bg-gray-700 text-white w-9 h-9 rounded-full flex items-center justify-center transition"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
       <button onclick="resetLightboxZoom()" class="bg-gray-800 hover:bg-gray-700 text-white px-3 h-9 rounded-full text-xs transition">1:1</button>
-      <button onclick="closeLightbox()" class="bg-gpRed hover:bg-gpDarkRed text-white w-9 h-9 rounded-full flex items-center justify-center transition" title="關閉"><i class="fa-solid fa-xmark text-lg"></i></button>
+      <button onclick="closeLightbox()" class="bg-gpRed hover:bg-gpDarkRed text-white w-9 h-9 rounded-full flex items-center justify-center transition"><i class="fa-solid fa-xmark text-lg"></i></button>
     </div>
     <div class="w-full h-full flex items-center justify-center overflow-hidden p-4 cursor-grab" id="lightbox-container" onwheel="handleLightboxWheel(event)">
       <img id="lightbox-img" src="" alt="作品原圖" class="max-w-[90vw] max-h-[90vh] object-contain shadow-2xl rounded">
@@ -285,6 +283,7 @@
     let appState = {
       token: sessionStorage.getItem("mgp_token") || "",
       judgeName: sessionStorage.getItem("mgp_judge") || "",
+      judgeGroup: sessionStorage.getItem("mgp_group") || "",
       submissions: [],
       currentIndex: 0,
       turnstileToken: "",
@@ -293,48 +292,31 @@
 
     let currentZoom = 1.0;
 
-    // ---------- Cloudflare Turnstile 顯式穩定初始化 ----------
+    // Turnstile 初始化
     function initTurnstile() {
       if (appState.turnstileRendered) return;
       if (!TURNSTILE_SITE_KEY || TURNSTILE_SITE_KEY === "YOUR_TURNSTILE_SITE_KEY_HERE") return;
-      
       const container = document.getElementById("turnstile-container");
       if (container && window.turnstile) {
         try {
           turnstile.render('#turnstile-container', {
             sitekey: TURNSTILE_SITE_KEY,
             theme: 'dark',
-            callback: function(token) {
-              appState.turnstileToken = token;
-            },
-            'expired-callback': function() {
-              appState.turnstileToken = "";
-            }
+            callback: function(token) { appState.turnstileToken = token; },
+            'expired-callback': function() { appState.turnstileToken = ""; }
           });
           appState.turnstileRendered = true;
-        } catch (e) {
-          console.warn("Turnstile render retry:", e);
-        }
+        } catch (e) {}
       }
     }
 
-    // 由 script 的 onload 參數直接調用
-    window.onTurnstileLoaded = function() {
-      initTurnstile();
-    };
-
-    // 雙重保險輪詢（避免快取或回呼未命中）
+    window.onTurnstileLoaded = function() { initTurnstile(); };
     let turnstileCheck = setInterval(() => {
-      if (window.turnstile && !appState.turnstileRendered) {
-        initTurnstile();
-      }
-      if (appState.turnstileRendered) {
-        clearInterval(turnstileCheck);
-      }
+      if (window.turnstile && !appState.turnstileRendered) initTurnstile();
+      if (appState.turnstileRendered) clearInterval(turnstileCheck);
     }, 250);
     setTimeout(() => clearInterval(turnstileCheck), 6000);
 
-    // 頁面初次載入
     window.addEventListener("DOMContentLoaded", () => {
       if (appState.token && appState.judgeName) {
         showEvalView();
@@ -342,7 +324,6 @@
       }
     });
 
-    // 呼叫 GAS 後端
     async function callApi(payload) {
       try {
         const res = await fetch(GAS_API_URL, {
@@ -356,7 +337,6 @@
       }
     }
 
-    // 登入處理
     async function handleLoginSubmit(e) {
       e.preventDefault();
       const u = document.getElementById("login-username").value.trim();
@@ -381,14 +361,15 @@
       if (res.success) {
         appState.token = res.token;
         appState.judgeName = res.judgeName;
+        appState.judgeGroup = res.judgeGroup || "A";
         sessionStorage.setItem("mgp_token", res.token);
         sessionStorage.setItem("mgp_judge", res.judgeName);
+        sessionStorage.setItem("mgp_group", appState.judgeGroup);
         showEvalView();
         loadSubmissions();
       } else {
         msg.textContent = res.message || "登入失敗";
         msg.classList.remove("hidden");
-        // 若驗證失敗且 Turnstile 存在，重置它
         if (window.turnstile && appState.turnstileRendered) {
           turnstile.reset('#turnstile-container');
           appState.turnstileToken = "";
@@ -401,6 +382,7 @@
       document.getElementById("eval-view").classList.remove("hidden");
       document.getElementById("user-info-bar").classList.remove("hidden");
       document.getElementById("display-judge-name").textContent = appState.judgeName;
+      document.getElementById("display-judge-group").textContent = `${appState.judgeGroup} 組`;
     }
 
     function logout() {
@@ -408,7 +390,6 @@
       location.reload();
     }
 
-    // 讀取作品資料清單
     async function loadSubmissions() {
       const res = await callApi({ action: "getSubmissions", token: appState.token });
       if (!res.success) {
@@ -417,33 +398,39 @@
         return;
       }
       appState.submissions = res.list || [];
+      if (res.judgeGroup) {
+        appState.judgeGroup = res.judgeGroup;
+        document.getElementById("display-judge-group").textContent = `${res.judgeGroup} 組`;
+      }
+
       if (appState.submissions.length === 0) {
-        alert("目前尚無作品資料！");
+        document.getElementById("content-grid").classList.add("hidden");
+        document.getElementById("empty-state").classList.remove("hidden");
+        document.getElementById("progress-indicator").textContent = `第 0 / 0 件`;
         return;
       }
+
+      document.getElementById("content-grid").classList.remove("hidden");
+      document.getElementById("empty-state").classList.add("hidden");
       renderCurrentItem();
     }
 
-    // Google Drive 連結解析
     function extractDriveId(url) {
       if (!url) return null;
       const match = url.match(/[-\w]{25,}/);
       return match ? match[0] : null;
     }
 
-    // 渲染當前作品（盲審：不出現任何流水號資訊）
     function renderCurrentItem() {
       const totalCount = appState.submissions.length;
       if (totalCount === 0) return;
       const cur = appState.submissions[appState.currentIndex];
 
-      // 純中立進度指示：第 X / Y 件作品
-      document.getElementById("progress-indicator").textContent = `第 ${appState.currentIndex + 1} / ${totalCount} 件作品`;
+      document.getElementById("progress-indicator").textContent = `[${appState.judgeGroup}組] 第 ${appState.currentIndex + 1} / ${totalCount} 件`;
       document.getElementById("current-category-badge").textContent = cur.category || "未分類";
       document.getElementById("prev-btn").disabled = (appState.currentIndex === 0);
       document.getElementById("next-btn").disabled = (appState.currentIndex === totalCount - 1);
 
-      // 文本細節注入（完全不渲染流水號）
       document.getElementById("item-title").textContent = cur.title || "無標題";
       document.getElementById("item-bg").textContent = cur.bg || "（未填寫）";
       document.getElementById("item-theme").textContent = cur.themeDesc || "（未填寫）";
@@ -452,7 +439,6 @@
       document.getElementById("item-postprocess").textContent = cur.postProcess || "無";
       document.getElementById("item-materials").textContent = cur.materialAuth || "無";
 
-      // 媒體渲染 (圖片或影片)
       const mediaBox = document.getElementById("media-container");
       const zoomBtn = document.getElementById("zoom-btn");
       mediaBox.innerHTML = "";
@@ -473,7 +459,6 @@
         mediaBox.innerHTML = `<div class="text-gray-500 text-xs">作品連結無效或未提供 Google Drive 網址</div>`;
       }
 
-      // 回填既有評分（若之前評過）
       const s = cur.myScores || {};
       document.getElementById("dim1").value = s.dim1 !== "" ? s.dim1 : 5;
       document.getElementById("dim2").value = s.dim2 !== "" ? s.dim2 : 5;
@@ -484,7 +469,6 @@
       updateScoreCalc();
     }
 
-    // 即時加權總分計算 (10% : 30% : 15% : 15% : 30%)
     function updateScoreCalc() {
       const d1 = Number(document.getElementById("dim1").value);
       const d2 = Number(document.getElementById("dim2").value);
@@ -502,13 +486,11 @@
       document.getElementById("calc-total").textContent = weighted.toFixed(1);
     }
 
-    // 快捷評語標籤帶入
     function insertTemplate(text) {
       const txt = document.getElementById("judge-comment");
       txt.value = txt.value ? `${txt.value} ${text}` : text;
     }
 
-    // 儲存評分並進入下一件 (內部使用 cur.id 對位)
     async function saveAndNext() {
       const cur = appState.submissions[appState.currentIndex];
       const saveBtn = document.getElementById("save-btn");
@@ -527,7 +509,7 @@
       const res = await callApi({
         action: "submitJudgeScore",
         token: appState.token,
-        id: cur.id, // 背景傳遞流水號，前端不對評審顯示
+        id: cur.id,
         scores: scores,
         comment: comment
       });
@@ -541,7 +523,7 @@
           appState.currentIndex++;
           renderCurrentItem();
         } else {
-          alert("🎉 恭喜！您已完成本組別所有送件作品的評審！");
+          alert(`🎉 恭喜！您已完成 [${appState.judgeGroup}組] 所有作品的評審！`);
         }
       } else {
         alert("儲存失敗：" + res.message);
@@ -556,7 +538,6 @@
       }
     }
 
-    // ---------- 燈箱圖片縮放功能 ----------
     function openLightbox() {
       const previewImg = document.getElementById("preview-image");
       if (!previewImg) return;
