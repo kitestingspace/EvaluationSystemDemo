@@ -46,6 +46,14 @@
       transition: transform 0.2s ease-out;
       transform-origin: center center;
     }
+    /* 隱藏滾動條但保持滾動能力 */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
   </style>
 
   <!-- Cloudflare Turnstile 顯式回呼機制 -->
@@ -65,7 +73,7 @@
   <header class="bg-black border-b-2 border-gpRed shadow-xl sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center space-x-3">
-        <div class="bg-gpRed text-white font-black px-2.5 py-1 rounded tracking-tighter text-sm italic">MGP</div>
+        <div class="bg-gpRed text-white font-black px-2.5 py-1 rounded tracking-tighter text-sm italic">MAIYEPA</div>
         <h1 class="text-lg md:text-xl font-bold tracking-wide">
           極速·創意·澳門 <span class="text-xs text-gpGold font-normal ml-1">評審專用平台</span>
         </h1>
@@ -90,7 +98,7 @@
       <div class="text-center mb-6">
         <i class="fa-solid fa-flag-checkered text-3xl text-gpGold mb-2"></i>
         <h2 class="text-xl font-bold">評審委員身分認證</h2>
-        <p class="text-xs text-gray-400 mt-1">澳門格蘭披治大賽車 AI 創作比賽評審通道</p>
+        <p class="text-xs text-gray-400 mt-1">「極速·創意·澳門」 AI 創作比賽 評審通道</p>
       </div>
 
       <form id="login-form" onsubmit="handleLoginSubmit(event)" class="space-y-4">
@@ -118,7 +126,36 @@
     <!-- ==================== 2. 評審主工作區 ==================== -->
     <div id="eval-view" class="hidden flex-col space-y-4">
       
-      <!-- 控制列：分組進度指示 -->
+      <!-- 作品評審進度概況矩陣 (一排 20 個方格) -->
+      <div class="bg-gpPanel border border-gpBorder rounded-xl p-3.5 shadow-lg space-y-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div class="flex items-center space-x-2">
+            <span class="font-bold text-gray-200 flex items-center">
+              <i class="fa-solid fa-table-cells text-gpGold mr-1.5"></i>評審進度矩陣盤
+            </span>
+            <span class="text-[11px] text-gray-400">（點選方格可直接切換至該作品）</span>
+          </div>
+          <div class="flex items-center space-x-3 text-[11px]">
+            <span class="flex items-center">
+              <span class="w-2.5 h-2.5 rounded-sm bg-emerald-700 border border-emerald-400 inline-block mr-1"></span>
+              已評分：<strong id="matrix-scored-count" class="text-emerald-400 ml-1 font-mono text-xs">0</strong>
+            </span>
+            <span class="flex items-center">
+              <span class="w-2.5 h-2.5 rounded-sm bg-rose-900 border border-rose-500 inline-block mr-1"></span>
+              未評分：<strong id="matrix-unscored-count" class="text-rose-400 ml-1 font-mono text-xs">0</strong>
+            </span>
+          </div>
+        </div>
+
+        <!-- 20 個一排的矩陣滾動容器 -->
+        <div class="overflow-x-auto no-scrollbar pb-1">
+          <div id="status-matrix" class="grid gap-1 py-1" style="grid-template-columns: repeat(20, minmax(28px, 1fr)); min-width: 620px;">
+            <!-- JS 動態生成方格 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 控制列：分組進度指示與翻頁切換 -->
       <div class="bg-gpPanel border border-gpBorder rounded-lg p-3 flex flex-wrap items-center justify-between gap-3 shadow">
         <div class="flex items-center space-x-3">
           <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">目前評審進度</span>
@@ -187,7 +224,7 @@
           </div>
         </div>
 
-        <!-- 右側：獨立客觀評分面板 (佔 5 格) -->
+        <!-- 右側：評分面板 (佔 5 格) -->
         <div class="lg:col-span-5 space-y-4">
           <div class="bg-gpPanel border border-gpBorder rounded-xl p-5 shadow space-y-5">
             <div class="flex items-center justify-between border-b border-gray-800 pb-3">
@@ -268,10 +305,10 @@
   <!-- ==================== 3. 原圖縮放檢視燈箱 ==================== -->
   <div id="lightbox" class="fixed inset-0 bg-black/95 z-50 hidden flex-col items-center justify-center backdrop-blur-sm select-none">
     <div class="absolute top-4 right-4 flex items-center space-x-3 z-50">
-      <button onclick="zoomLightbox(0.2)" class="bg-gray-800 hover:bg-gray-700 text-white w-9 h-9 rounded-full flex items-center justify-center transition"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
-      <button onclick="zoomLightbox(-0.2)" class="bg-gray-800 hover:bg-gray-700 text-white w-9 h-9 rounded-full flex items-center justify-center transition"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+      <button onclick="zoomLightbox(0.2)" class="bg-gray-800 hover:bg-gray-700 text-white w-9 h-9 rounded-full flex items-center justify-center transition" title="放大"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+      <button onclick="zoomLightbox(-0.2)" class="bg-gray-800 hover:bg-gray-700 text-white w-9 h-9 rounded-full flex items-center justify-center transition" title="縮小"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
       <button onclick="resetLightboxZoom()" class="bg-gray-800 hover:bg-gray-700 text-white px-3 h-9 rounded-full text-xs transition">1:1</button>
-      <button onclick="closeLightbox()" class="bg-gpRed hover:bg-gpDarkRed text-white w-9 h-9 rounded-full flex items-center justify-center transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+      <button onclick="closeLightbox()" class="bg-gpRed hover:bg-gpDarkRed text-white w-9 h-9 rounded-full flex items-center justify-center transition" title="關閉"><i class="fa-solid fa-xmark text-lg"></i></button>
     </div>
     <div class="w-full h-full flex items-center justify-center overflow-hidden p-4 cursor-grab" id="lightbox-container" onwheel="handleLightboxWheel(event)">
       <img id="lightbox-img" src="" alt="作品原圖" class="max-w-[90vw] max-h-[90vh] object-contain shadow-2xl rounded">
@@ -407,12 +444,69 @@
         document.getElementById("content-grid").classList.add("hidden");
         document.getElementById("empty-state").classList.remove("hidden");
         document.getElementById("progress-indicator").textContent = `第 0 / 0 件`;
+        renderStatusMatrix();
         return;
       }
 
       document.getElementById("content-grid").classList.remove("hidden");
       document.getElementById("empty-state").classList.add("hidden");
       renderCurrentItem();
+    }
+
+    // 判斷作品是否已被該評審評分
+    function isItemScored(item) {
+      if (!item || !item.myScores) return false;
+      const tot = item.myScores.total;
+      return (tot !== "" && tot !== null && tot !== undefined && !isNaN(Number(tot)));
+    }
+
+    // 渲染進度矩陣盤 (嚴格 20 個一排)
+    function renderStatusMatrix() {
+      const matrix = document.getElementById("status-matrix");
+      if (!matrix) return;
+      matrix.innerHTML = "";
+
+      const list = appState.submissions;
+      let scoredCount = 0;
+
+      list.forEach((item, idx) => {
+        const scored = isItemScored(item);
+        if (scored) scoredCount++;
+
+        const isCurrent = (idx === appState.currentIndex);
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.title = `第 ${idx + 1} 件作品 (${scored ? '已評分' : '未評分'})`;
+        btn.textContent = idx + 1;
+        btn.onclick = () => jumpToItem(idx);
+
+        // 樣式：綠色代表已評分、紅色代表未評分
+        let cls = "h-7 flex items-center justify-center rounded text-[11px] font-mono transition duration-150 ";
+        if (scored) {
+          cls += "bg-emerald-800/90 hover:bg-emerald-700 text-emerald-100 border border-emerald-500/80 ";
+        } else {
+          cls += "bg-rose-950/80 hover:bg-rose-900 text-rose-200 border border-rose-700/80 ";
+        }
+
+        // 當前作品高亮標記
+        if (isCurrent) {
+          cls += "ring-2 ring-gpGold border-gpGold font-black scale-105 shadow-md shadow-black z-10 ";
+        }
+
+        btn.className = cls;
+        matrix.appendChild(btn);
+      });
+
+      document.getElementById("matrix-scored-count").textContent = scoredCount;
+      document.getElementById("matrix-unscored-count").textContent = list.length - scoredCount;
+    }
+
+    // 點選小方格直接跳轉至指定作品
+    function jumpToItem(idx) {
+      if (idx >= 0 && idx < appState.submissions.length) {
+        appState.currentIndex = idx;
+        renderCurrentItem();
+      }
     }
 
     function extractDriveId(url) {
@@ -426,10 +520,13 @@
       if (totalCount === 0) return;
       const cur = appState.submissions[appState.currentIndex];
 
+      // 更新進度條與矩陣當前高亮
       document.getElementById("progress-indicator").textContent = `[${appState.judgeGroup}組] 第 ${appState.currentIndex + 1} / ${totalCount} 件`;
       document.getElementById("current-category-badge").textContent = cur.category || "未分類";
       document.getElementById("prev-btn").disabled = (appState.currentIndex === 0);
       document.getElementById("next-btn").disabled = (appState.currentIndex === totalCount - 1);
+
+      renderStatusMatrix();
 
       document.getElementById("item-title").textContent = cur.title || "無標題";
       document.getElementById("item-bg").textContent = cur.bg || "（未填寫）";
@@ -518,7 +615,10 @@
       saveBtn.innerHTML = `<i class="fa-solid fa-cloud-arrow-up mr-1.5"></i>儲存評分並進入下一件`;
 
       if (res.success) {
+        // 更新本地緩存並觸發矩陣方格變綠
         cur.myScores = { ...scores, total: res.total, comment: comment };
+        renderStatusMatrix();
+
         if (appState.currentIndex < appState.submissions.length - 1) {
           appState.currentIndex++;
           renderCurrentItem();
